@@ -1,0 +1,52 @@
+---
+- name: Deploy and run compliance script on remote hosts
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars:
+    # Имя пользователя для подключения (можно переопределить через -e)
+    remote_user: "{{ ansible_user | default('your_username') }}"
+    # Директория на удаленном хосте где будет размещен скрипт
+    remote_tmp_dir: /tmp/ansible_compliance
+    # Имя локальной директории куда будут скопированы отчеты
+    local_reports_dir: sftp_compliance_reports
+
+  tasks:
+    - name: Create temporary directory on remote host
+      ansible.builtin.file:
+        path: "{{ remote_tmp_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy script.sh to remote host
+      ansible.builtin.copy:
+        src: script.sh
+        dest: "{{ remote_tmp_dir }}/script.sh"
+        mode: '0644'
+
+    - name: Make script executable
+      ansible.builtin.command: chmod +x {{ remote_tmp_dir }}/script.sh
+      changed_when: false
+
+    - name: Run the script on remote host
+      ansible.builtin.command: "{{ remote_tmp_dir }}/script.sh"
+      args:
+        chdir: "{{ remote_tmp_dir }}"
+      register: script_output
+
+    - name: Fetch compliance reports from remote host
+      ansible.builtin.fetch:
+        src: "{{ remote_tmp_dir }}/sftp_compliance_reports/"
+        dest: "{{ local_reports_dir }}/"
+        flat: no
+        validate_checksum: yes
+
+    - name: Remove script and reports directory from remote host
+      ansible.builtin.file:
+        path: "{{ remote_tmp_dir }}"
+        state: absent
+
+    - name: Display execution status
+      ansible.builtin.debug:
+        msg: "Script executed successfully on {{ inventory_hostname }}"
